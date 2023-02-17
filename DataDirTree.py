@@ -8,7 +8,7 @@ class DataDirTree:
     def __init__(self):
         self.tree = QTreeWidget()
         self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(['Run selection', 'scale'])
+        self.tree.setHeaderLabels(['Run selection', 'Scale'])
         self.tree.clicked.connect(self.clicked)
         self.tree.setItemDelegateForColumn(1, EditableDelegate(self.tree))
         
@@ -27,10 +27,10 @@ class DataDirTree:
                     dir_path = os.path.basename(dir_name[:-1])
                     dir_item = QTreeWidgetItem(root_item)  # create a QTreeWidgetItem for the current subfolder
                     dir_item.setCheckState(0, Qt.CheckState.Unchecked)
+                    dir_item.setFlags(dir_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     dir_item.setText(0, dir_path)  # set the display text to the name of the current folder
                     dir_item.setData(0, Qt.ItemDataRole.UserRole, dir_path)  # set the folder path as user data for the item
                     dir_item.setData(1, Qt.ItemDataRole.EditRole, 1)
-                    dir_item.setFlags(dir_item.flags() | Qt.ItemFlag.ItemIsEditable)
 
         self.tree.setColumnWidth(0, 150)
         self.tree.setColumnWidth(1, 40)
