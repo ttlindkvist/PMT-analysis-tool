@@ -49,7 +49,10 @@ class MainWindow(QtWidgets.QMainWindow):
         right_widget = QWidget()
         right_layout = QVBoxLayout()
         
-        self.datadirtree = DataDirTree()
+        # data_dir_path = "E:\\LUNA2\\PMTTestData"
+        # data_dir_path = 'O:\\Nat_IFA-fullc\\people\\akThomas\\Sum spectra\\'
+        data_dir_path = 'O:\\Nat_IFA-fullc\\experimental\\expdata\\Fluorescence_LUNA2\\PMTdata_summed\\'
+        self.datadirtree = DataDirTree(data_dir_path)
         right_layout.addWidget(self.datadirtree.tree)
         
         sum_buttons = QHBoxLayout()

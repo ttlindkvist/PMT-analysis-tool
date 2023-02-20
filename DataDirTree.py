@@ -5,14 +5,13 @@ from PyQt6.QtGui import QValidator
 
 
 class DataDirTree:
-    def __init__(self):
+    def __init__(self, data_dir_path):
         self.tree = QTreeWidget()
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(['Run selection', 'Scale'])
         self.tree.clicked.connect(self.clicked)
         self.tree.setItemDelegateForColumn(1, EditableDelegate(self.tree))
         
-        data_dir_path = "E:\\LUNA2\\PMTTestData"
         for year_dir in sorted(glob.glob(data_dir_path+'\\*\\'), key=os.path.getmtime):
             year_item = QTreeWidgetItem(self.tree)
             year_item.setText(0, os.path.basename(year_dir[:-1]))
