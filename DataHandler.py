@@ -4,6 +4,7 @@
 ## Should be able to compute absorption spectra, with list of runs as input and save the sum
 import numpy as np
 import glob, os
+from PMTHeaderReader import read_header_string
 
 respons = np.array([0.083, 0.092, 0.106, 0.121, 0.135, 0.149, 0.163, 0.177, 0.191, 0.205, 0.219, 0.232, 0.246, 0.26, 0.273, 0.286, 0.299, 0.312, 0.325, 0.337, 0.348, 0.360, 0.371, 0.382, 0.393, 0.403, 0.412, 0.42, 0.427, 0.433, 0.437])
 pd_wl = np.arange(400, 710, 10)
@@ -40,40 +41,48 @@ class DataHandler:
             run_folder_base = os.path.basename(run_folder)
             date_folder = os.path.dirname(run_folder)
 
-            PMT_combined_file_name = date_folder+'\\'+run_folder_base+'_channelA_combined.dat'
-            PD_combined_file_name =  date_folder+'\\'+run_folder_base+'_channelD_combined.dat'
+            PMT_combined_file_name = date_folder+'\\'+run_folder_base+'_channelA.dat'
+            PD_combined_file_name =  date_folder+'\\'+run_folder_base+'_channelD.dat'
             if not (os.path.exists(PMT_combined_file_name) and os.path.exists(PMT_combined_file_name)):
                 self.combine_run_files(run_folder, date_folder)
             
-            PMTdata = np.loadtxt(PMT_combined_file_name)
-            PDdata = np.loadtxt(PD_combined_file_name)
+            # Find header length
+            # Load info from header
+            header_length, header_dict = read_header_string(PMT_combined_file_name)
+
+            PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length)
+            PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length)
             
             #Extract wavelengths as first column in matrix
             wavelengths = PMTdata[0]
             PMTdata = (PMTdata[1:]).transpose()
             PDdata = (PDdata[1:]).transpose()
             
-            self.cached_runs[run_folder] = {'wavelengths': wavelengths, 'PMT': PMTdata, 'PD' : PDdata}
+            self.cached_runs[run_folder] = {'wavelengths': wavelengths, 'PMT': PMTdata, 'PD' : PDdata,
+                                            'molecule' : header_dict.get('Molecule', '')}
             self.compute_absorption(run_folder)
     
-    def sum_runs(self, run_folders, run_weights=None, run_scalings=None):
+    def sum_runs(self, run_folders, data_key, run_weights=None, run_scalings=None):
         #First see if all runs are loaded
         self.load_runs(run_folders)
         
         wls = np.array([])
         absorption = np.array([])
-        if run_weights == None:
+        if run_weights is None:
             run_weights = [1]*len(run_folders)
-        if run_scalings == None:
+        if run_scalings is None:
             run_scalings = [1]*len(run_folders)
         weights = []
+        molecules = []
+
         #Flatten wl and absorption arrays for the runs
         for run_folder, run_weight, run_scaling in zip(run_folders, run_weights, run_scalings):
-            absorption = np.concatenate((absorption, self.absorption_spectra[run_folder]['absorption']*run_scaling))
-            
-            run_wls = self.absorption_spectra[run_folder]['wavelengths']
+            absorption = np.concatenate((absorption, np.atleast_1d(self.absorption_spectra[run_folder]['absorption']*run_scaling)))
+            run_wls = np.atleast_1d(self.absorption_spectra[run_folder]['wavelengths'])
             wls = np.concatenate((wls, run_wls))
+            
             weights += [run_weight]*len(run_wls)
+            molecules.append(self.absorption_spectra[run_folder]['molecule'])
         weights = np.array(weights)
 
         # Sort all arrays wrt. the wl
@@ -93,10 +102,11 @@ class DataHandler:
 
             absorption_avg[i] = avg
             absorption_std[i] = std / np.sqrt(len(vals))
-        all_run_folders_string = ''
-        for run_folder in run_folders:
-            all_run_folders_string += run_folder
-        self.absorption_spectra[all_run_folders_string] = {'wavelengths': wl_set, 'absorption':absorption_avg, 'absorption_std': absorption_std}
+
+        molecules_set = set(molecules)
+        molecules_str = ', '.join(molecules_set)
+        self.absorption_spectra[data_key] = {'wavelengths': wl_set, 'absorption':absorption_avg, 'absorption_std': absorption_std,
+                                             'molecule': molecules_str}
     
     def compute_absorption(self, run_folder):
         PMTintegrate_start = 1300
@@ -108,6 +118,7 @@ class DataHandler:
         wls      = self.cached_runs[run_folder]['wavelengths']
         PMTdata  = self.cached_runs[run_folder]['PMT']
         PDdata   = self.cached_runs[run_folder]['PD']
+        molecule   = self.cached_runs[run_folder]['molecule']
         if len(np.atleast_1d(wls)) > 1:
             PMT_zeros = np.mean(PMTdata[:,500:1000], axis=1)
             PD_zeros  = np.mean(PDdata[:,500:1000] , axis=1)
@@ -118,7 +129,8 @@ class DataHandler:
             PMT_yields = np.trapz(PMTdata[:,PMTintegrate_start:PMTintegrate_end] - PMT_zeros, axis=1)
             PD_yields =  np.trapz(PDdata[:,PDintegrate_start:PDintegrate_end] - PD_zeros, axis=1)
             
-            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls)}
+            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls),
+                                                   'molecule': molecule}
         else:
             PMT_zeros = np.mean(PMTdata[500:1000])
             PD_zeros  = np.mean(PDdata[500:1000])
@@ -126,10 +138,11 @@ class DataHandler:
             PMT_yields = np.trapz(PMTdata[PMTintegrate_start:PMTintegrate_end] - PMT_zeros)
             PD_yields = np.trapz(PDdata[PDintegrate_start:PDintegrate_end] - PD_zeros)
             
-            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls)}
+            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls),
+                                                   'molecule': molecule}
         
     def combine_run_files(self, folder, savefolder):
-        nfiles = len(glob.glob(folder+'\\channelA*.dat'))
+        nfiles = len(glob.glob(folder+'\\channelA[0-9][0-9][0-9]_sum.dat'))
         PMTfiles = [folder+'\\channelA'+str(x).zfill(3)+'_sum.dat' for x in range(nfiles)]
         PDfiles = [folder+'\\channelD'+str(x).zfill(3)+'_sum.dat' for x in range(nfiles)]
         
@@ -140,6 +153,7 @@ class DataHandler:
         total_header_length = 0
 
         for PMTfile, PDfile in zip(PMTfiles, PDfiles):
+
             # Save the header and excitation wavelengths
             with open(PMTfile) as f:
                 header_no_wl = ''
@@ -152,9 +166,9 @@ class DataHandler:
                         wavelengths.append(float(line.split()[2]))
                     else:
                         header_no_wl += line
-            
-            PMTtraces.append(np.loadtxt(PMTfile, skiprows=total_header_length))
-            PDtraces.append(np.loadtxt(PDfile, skiprows=total_header_length))
+        
+            PMTtraces.append(np.loadtxt(PMTfile, skiprows=total_header_length).flatten())
+            PDtraces.append( np.loadtxt(PDfile, skiprows=total_header_length).flatten())
             
         PMTtraces = np.array(PMTtraces)
         PDtraces = np.array(PDtraces)
@@ -168,5 +182,92 @@ class DataHandler:
         PDtraces_and_wl = np.vstack((wavelengths, PDtraces.transpose()))
         
         run_folder = os.path.basename(folder)
-        np.savetxt(savefolder+'\\'+run_folder+'_channelA_combined.dat', PMTtraces_and_wl, header=header_no_wl)
-        np.savetxt(savefolder+'\\'+run_folder+'_channelD_combined.dat', PDtraces_and_wl, header=header_no_wl)
+        
+        #Remove last newline from loaded header
+        header_no_wl = header_no_wl.rstrip('\n')
+        np.savetxt(savefolder+'\\'+run_folder+'_channelA.dat', PMTtraces_and_wl, header=header_no_wl, comments='')
+        np.savetxt(savefolder+'\\'+run_folder+'_channelD.dat', PDtraces_and_wl, header=header_no_wl, comments='')
+
+    def auto_rescale_runs(self, run_folders):
+        #First see if all runs are loaded
+        self.load_runs(run_folders)
+
+        # Determine the overlaps between all pairs
+        overlapping_sets = []
+        all_wl_ranges = dict()
+
+        for run in run_folders:
+            wls = self.absorption_spectra[run]['wavelengths']
+            run_wl_start = np.min(wls)
+            run_wl_end = np.max(wls)
+            all_wl_ranges[run] = [run_wl_start, run_wl_end]
+
+            #Compare with previous regions, to find continuous overlaps
+            has_overlap = False
+            for i, s in enumerate(overlapping_sets):
+                #Check overlap in each set
+                for set_run in s:
+                    set_run_region = all_wl_ranges[set_run]
+                    if max(run_wl_start, set_run_region[0]) <= min(run_wl_end, set_run_region[1]):
+                        has_overlap = True
+                        overlapping_sets[i].add(run)
+                        break
+
+            if not has_overlap:
+                s = set()
+                s.add(run)
+                overlapping_sets.append(s)
+        
+        # Rescale each set - find individual overlaps in each set
+        for s in overlapping_sets:            
+            # Sort runs in order from largest to smallest range
+            sorted_runs = sorted(s, key=lambda run: all_wl_ranges[run][1]-all_wl_ranges[run][0])[::-1]
+
+            run_scalings = dict()
+
+            runs_left = sorted_runs[1:]
+            
+            i = 0
+            maxiter = len(sorted_runs)-1
+            while len(runs_left) > 0:
+                # Rescale all runs with respect to the i'th largest ranged run
+                rescaled_runs = []
+                reference_wls = self.absorption_spectra[sorted_runs[i]]['wavelengths']
+                reference_abs = self.absorption_spectra[sorted_runs[i]]['absorption']
+                for run in (x for x in runs_left if x != sorted_runs[i]):
+                    wls = self.absorption_spectra[run]['wavelengths']
+                    run_wl_start = np.min(wls)
+                    run_wl_end = np.max(wls)
+
+                    # Find common wavelengths
+                    common_wls_start = max(run_wl_start, np.min(reference_wls))
+                    common_wls_end = min(run_wl_end, np.max(reference_wls))
+
+                    print(common_wls_start, common_wls_end)
+                    if common_wls_start < common_wls_end:
+                        run_abs = self.absorption_spectra[run]['absorption']
+                        run_start_idx = np.argmin(np.abs(wls - common_wls_start))
+                        run_end_idx = np.argmin(np.abs(wls - common_wls_end))
+
+                        run_integral = np.trapz(run_abs[run_start_idx:run_end_idx], wls[run_start_idx:run_end_idx])
+
+                        reference_start_idx = np.argmin(np.abs(reference_wls-common_wls_start))
+                        reference_end_idx = np.argmin(np.abs(reference_wls-common_wls_end))
+
+                        reference_integral = np.trapz(reference_abs[reference_start_idx:reference_end_idx], reference_wls[reference_start_idx:reference_end_idx])
+
+
+                        # additional scaling from reference
+                        auto_scale_factor = run_scalings.get(sorted_runs[i],1) * reference_integral / run_integral
+                        run_scalings[run] = auto_scale_factor
+                        self.absorption_spectra[run]['autoscaling factor'] = auto_scale_factor
+                        print(run, auto_scale_factor)
+                        rescaled_runs.append(run)
+
+
+                # Remove rescaled runs from runs_left list
+                runs_left = [x for x in runs_left if x not in rescaled_runs]
+
+                i += 1
+                if i > maxiter:
+                    break

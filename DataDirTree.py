@@ -1,43 +1,44 @@
 import sys, os, glob
+from datetime import datetime
 from PyQt6.QtWidgets import QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QStyledItemDelegate, QLineEdit
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QValidator
 
+from PMTHeaderReader import read_header_string
 
 class DataDirTree:
+    header_indices = {'Run selection' : 0, 'Scale': 1, 'Molecule': 2, 'Quick load': 3, 'Comments': 4}
     def __init__(self, data_dir_path):
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(['Run selection', 'Scale'])
+        self.tree.setColumnCount(len(self.header_indices.keys()))
+        self.tree.setHeaderLabels(self.header_indices.keys())
         self.tree.clicked.connect(self.clicked)
-        self.tree.setItemDelegateForColumn(1, EditableDelegate(self.tree))
-        
-        for year_dir in sorted(glob.glob(data_dir_path+'\\*\\'), key=os.path.getmtime):
-            year_item = QTreeWidgetItem(self.tree)
-            year_item.setText(0, os.path.basename(year_dir[:-1]))
-            
-            for date_dir in sorted(glob.glob(year_dir+'\\*\\'), key=os.path.getmtime):
-                root_item = QTreeWidgetItem(year_item)  # create a QTreeWidgetItem for the current root folder
-                root_item.setFlags(root_item.flags() | Qt.ItemFlag.ItemIsAutoTristate | Qt.ItemFlag.ItemIsUserCheckable)
-                root_item.setText(0, os.path.basename(date_dir[:-1]))  # set the display text to the name of the current folder
-                root_item.setData(0, Qt.ItemDataRole.UserRole, date_dir)  # set the folder path as user data for the item
-            
-                for dir_name in sorted(glob.glob(date_dir+'\\*\\'),key=os.path.getmtime):
-                    dir_path = os.path.basename(dir_name[:-1])
-                    dir_item = QTreeWidgetItem(root_item)  # create a QTreeWidgetItem for the current subfolder
-                    dir_item.setCheckState(0, Qt.CheckState.Unchecked)
-                    dir_item.setFlags(dir_item.flags() | Qt.ItemFlag.ItemIsEditable)
-                    dir_item.setText(0, dir_path)  # set the display text to the name of the current folder
-                    dir_item.setData(0, Qt.ItemDataRole.UserRole, dir_path)  # set the folder path as user data for the item
-                    dir_item.setData(1, Qt.ItemDataRole.EditRole, 1)
-
+        self.tree.itemDoubleClicked.connect(self.double_clicked)
+        # self.tree.setEditTriggers()
+        self.tree.setItemDelegateForColumn(self.header_indices['Scale'], EditableDelegate(self.tree))
         self.tree.setColumnWidth(0, 150)
         self.tree.setColumnWidth(1, 40)
+        self.tree.itemExpanded.connect(self.on_item_expanded)
+        self.data_dir_path = data_dir_path
+        self.reload_folders()
+
     
+    def reload_folders(self):
+        pass
+
+    def on_item_expanded(self, item : QTreeWidgetItem):
+        pass
+
     def clicked(self):
         pass
-        # for selected_run in self.getSelectedRuns():
-        #     print(selected_run)
+
+    def double_clicked(self, item : QTreeWidgetItem, column : int):
+        flags = item.flags()
+        if column == self.header_indices['Scale']:
+            item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
+        else:
+            item.setFlags(flags & (~Qt.ItemFlag.ItemIsEditable))
+
     def getSelectedRuns(self):
         selected_dirs = []
         scales = []
@@ -46,9 +47,16 @@ class DataDirTree:
         while it.value():
             selected_dirs.append(it.value().parent().data(0, Qt.ItemDataRole.UserRole) +
                  it.value().data(0, Qt.ItemDataRole.UserRole))
-            scales.append(it.value().data(1, Qt.ItemDataRole.EditRole))
+            scales.append(it.value().data(self.header_indices['Scale'], Qt.ItemDataRole.EditRole))
             it += 1
         return selected_dirs, scales
+    
+    def clearSelection(self):
+        it = QTreeWidgetItemIterator(self.tree, 
+                QTreeWidgetItemIterator.IteratorFlag.Checked)
+        while it.value():
+            it.value().setCheckState(0,Qt.CheckState.Unchecked)
+            it += 1
 
 class EditableDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
@@ -57,7 +65,7 @@ class EditableDelegate(QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         # return the editor widget for the delegate
         editor = QLineEdit(parent)
-        editor.setValidator(FloatValidator()) # set the validator to check for integers
+        editor.setValidator(FloatValidator()) # set the validator to check for float
         return editor
         
     def setEditorData(self, editor, index):
