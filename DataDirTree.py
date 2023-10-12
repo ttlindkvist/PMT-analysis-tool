@@ -14,7 +14,6 @@ class DataDirTree:
         self.tree.setHeaderLabels(self.header_indices.keys())
         self.tree.clicked.connect(self.clicked)
         self.tree.itemDoubleClicked.connect(self.double_clicked)
-        # self.tree.setEditTriggers()
         self.tree.setItemDelegateForColumn(self.header_indices['Scale'], EditableDelegate(self.tree))
         self.tree.setColumnWidth(0, 150)
         self.tree.setColumnWidth(1, 40)

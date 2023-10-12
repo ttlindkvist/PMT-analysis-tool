@@ -5,7 +5,8 @@ import matplotlib.ticker as ticker
 matplotlib.use('QtAgg')
 
 from PyQt6 import QtCore, QtGui, QtWidgets
-from PyQt6.QtWidgets import QTabWidget, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPushButton, QCheckBox, QLineEdit, QTreeWidgetItemIterator
+from PyQt6.QtWidgets import QFileDialog, QTabWidget, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QVBoxLayout,\
+                            QWidget, QPushButton, QCheckBox, QLineEdit, QTreeWidgetItemIterator
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDoubleValidator
 
@@ -53,11 +54,7 @@ class MainWindow(QtWidgets.QMainWindow):
         right_widget = QWidget()
         right_layout = QVBoxLayout()
         
-        # data_dir_path = "E:\\LUNA2\\PMTTestData"
-        # data_dir_path = 'O:\\Nat_IFA-fullc\\people\\akThomas\\Row to col\\'
         PMT_data_dir_path = 'O:\\Nat_IFA-fullc\\experimental\\expdata\\Fluorescence_LUNA2\\PMTdata_summed\\'
-        # data_dir_path = 'C:\\Users\\thoma\\Documents\\LUNA2\\PMTdata_summed\\'
-
         spec_data_dir_path = 'O:\\Nat_IFA-fullc\\experimental\\expdata\\Fluorescence_LUNA2\\DATA\\'
 
         self.datadirtree = PMTDirTree(PMT_data_dir_path)
@@ -93,6 +90,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sum_tree.setColumnCount(len(self.sum_tree_headers.keys()))
         self.sum_tree.setHeaderLabels(self.sum_tree_headers.keys())
         self.sum_tree.setItemDelegateForColumn(self.sum_tree_headers['Scale'], EditableDelegate(self.sum_tree))
+        self.sum_tree.itemDoubleClicked.connect(self.sum_item_double_clicked)
         right_layout.addWidget(self.sum_tree)
         
         display_check_boxes_layout = QHBoxLayout()
@@ -382,7 +380,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def export_button_clicked(self):
-        pass
+        #First loop over selected sums
+        
+
+        test = QFileDialog.getSaveFileName(self, "Save sum", "C:/test.dat")
+        print(test)
 
     def reset_sum_button_clicked(self):
         self.sum_tree.clear()
@@ -435,7 +437,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sc.axes.tick_params(which='major', axis='both', length=10, width=1.2)
         self.sc.axes.tick_params(which='minor', axis='both', length=6, width=1.2)
 
-        
+    def sum_item_double_clicked(self, item : QTreeWidgetItem, column : int):
+        flags = item.flags()
+        if column == self.sum_tree_headers['Scale'] or column == self.sum_tree_headers['Sum selection']:
+            item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
+        else:
+            item.setFlags(flags & (~Qt.ItemFlag.ItemIsEditable))
+
     
 app = QtWidgets.QApplication(sys.argv)
 w = MainWindow()

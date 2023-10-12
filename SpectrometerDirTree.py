@@ -54,7 +54,7 @@ class SpectrometerDirTree(DataDirTree):
                 child = item.child(i)
                 run_file = child.data(0, Qt.ItemDataRole.UserRole)
                 
-                _, header_dict = SpecHeaderReader.read_header_string(run_file)
+                _, header_dict, _ = SpecHeaderReader.read_header_string(run_file)
 
                 child.setText(self.header_indices['Molecule'], header_dict.get('Ion name', ''))
                 child.setText(self.header_indices['Excitation wavelength'], header_dict.get('Excitation wavelength', ''))

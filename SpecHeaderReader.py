@@ -18,5 +18,9 @@ def read_header_string(filename):
                     line = next(file)
                     header_length += 1
                 header_dict['[Notes]'] = comments.strip()
-                
-    return header_length, header_dict
+        data_length = 0
+        line = next(file)
+        while not ("[AndorNewton]" in line):
+            line = next(file)
+            data_length += 1
+    return header_length, header_dict, data_length

@@ -13,22 +13,34 @@ def weighted_avg_and_std(values, weights):
     return average, np.sqrt(variance)
 
 class SpecDataHandler:
-    DEAD_PIXELS = 42
+    #Number of non-intensified pixels on each side
+    DEAD_PIXELS = 167
     def __init__(self):
         self.dispersed_fluorescence = {}
     
-    def load_runs(self, runs):
+    def load_runs(self, runs, force_rebinning=True):
         for run in runs:
             # Check if run is already loaded
             if run in self.dispersed_fluorescence.keys():
                 continue
             
-            header_length, header_dict = SpecHeaderReader.read_header_string(run)
-            data = np.loadtxt(run, skiprows=header_length, max_rows=256).transpose()
-            self.dispersed_fluorescence[run] = {'wavelengths' : data[0,self.DEAD_PIXELS:-self.DEAD_PIXELS], 
-                                                'fluorescence' : data[3,self.DEAD_PIXELS:-self.DEAD_PIXELS],
-                                                'molecule' : header_dict.get('Ion name', '')}
-    
+            header_length, header_dict, data_length = SpecHeaderReader.read_header_string(run)
+            
+            data = np.loadtxt(run, skiprows=header_length, max_rows=data_length).transpose()
+            bin_size = int(1024/data_length)
+
+            if data_length == 1024:
+                bin_size = 4
+                rebinned_wls = data[0].reshape(-1, bin_size).mean(axis=1)
+                rebinned_signal = data[3].reshape(-1, bin_size).sum(axis=1)
+                self.dispersed_fluorescence[run] = {'wavelengths'  : rebinned_wls[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)], 
+                                                    'fluorescence' : rebinned_signal[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
+                                                    'molecule' : header_dict.get('Ion name', '')}
+            else:
+                self.dispersed_fluorescence[run] = {'wavelengths'  : data[0,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)], 
+                                                    'fluorescence' : data[3,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
+                                                    'molecule' : header_dict.get('Ion name', '')}
+            
     def sum_runs(self, runs, data_key, run_weights=None, run_scalings=None):
         #First see if all runs are loaded
         self.load_runs(runs)
