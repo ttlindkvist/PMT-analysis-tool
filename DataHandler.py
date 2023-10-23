@@ -220,8 +220,11 @@ class DataHandler:
         
         # Rescale each set - find individual overlaps in each set
         for s in overlapping_sets:            
-            # Sort runs in order from largest to smallest range
-            sorted_runs = sorted(s, key=lambda run: all_wl_ranges[run][1]-all_wl_ranges[run][0])[::-1]
+            # # Sort runs in order from largest to smallest range
+            # sorted_runs = sorted(s, key=lambda run: all_wl_ranges[run][1]-all_wl_ranges[run][0])[::-1]
+
+            # Sort runs in order from largest to smallest integral
+            sorted_runs = sorted(s, key=lambda run: np.trapz(self.absorption_spectra[run]['absorption'], self.absorption_spectra[run]['wavelengths']))[::-1]
 
             run_scalings = dict()
 
@@ -243,7 +246,7 @@ class DataHandler:
                     common_wls_start = max(run_wl_start, np.min(reference_wls))
                     common_wls_end = min(run_wl_end, np.max(reference_wls))
 
-                    print(common_wls_start, common_wls_end)
+                    # print(common_wls_start, common_wls_end)
                     if common_wls_start < common_wls_end:
                         run_abs = self.absorption_spectra[run]['absorption']
                         run_start_idx = np.argmin(np.abs(wls - common_wls_start))
@@ -261,7 +264,7 @@ class DataHandler:
                         auto_scale_factor = run_scalings.get(sorted_runs[i],1) * reference_integral / run_integral
                         run_scalings[run] = auto_scale_factor
                         self.absorption_spectra[run]['autoscaling factor'] = auto_scale_factor
-                        print(run, auto_scale_factor)
+                        # print(run, auto_scale_factor)
                         rescaled_runs.append(run)
 
 
