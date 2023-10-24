@@ -1,7 +1,7 @@
 from DataDirTree import DataDirTree
 import glob, os
 from PyQt6.QtWidgets import QTreeWidgetItem, QTreeWidgetItemIterator
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from datetime import datetime 
 import SpecHeaderReader
 
@@ -59,8 +59,10 @@ class SpectrometerDirTree(DataDirTree):
                 child.setText(self.header_indices['Molecule'], header_dict.get('Ion name', ''))
                 child.setText(self.header_indices['Excitation wavelength'], header_dict.get('Excitation wavelength', ''))
                 child.setText(self.header_indices['Filter'], header_dict.get('Flourescence filter type', '') + ' @ ' + header_dict.get('Filter wavelength', '') + ' nm')
-                child.setText(self.header_indices['Comments'], header_dict.get('[Notes]', '')) 
-        
+                comments = header_dict.get('[Notes]', '')
+                child.setText(self.header_indices['Comments'], comments.split('\n')[0])
+                child.setToolTip(self.header_indices['Comments'], comments) 
+                
     def getSelectedRuns(self):
         selected_dirs = []
         scales = []

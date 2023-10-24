@@ -34,27 +34,41 @@ class DataHandler:
         # if a combined run file doesn't exist - create one
         #Load the combined run files into the dict self.loaded_runs
         for run_folder in run_folders:
-            # Check if run is already loaded
-            if run_folder in self.cached_runs.keys():
-                continue
-            # Check if the combined traces for the run exists
             run_folder_base = os.path.basename(run_folder)
             date_folder = os.path.dirname(run_folder)
-
             PMT_combined_file_name = date_folder+'\\'+run_folder_base+'_channelA.dat'
             PD_combined_file_name =  date_folder+'\\'+run_folder_base+'_channelD.dat'
+            n_files = len(glob.glob(run_folder+'\\channelA*'))
+            
+            # Check if run is already loaded
+            if run_folder in self.cached_runs.keys():
+                if n_files == len(self.cached_runs[run_folder]['wavelengths']):
+                    continue
+                else:
+                    self.combine_run_files(run_folder, date_folder)
+            
+            # Check if the combined traces for the run exists
             if not (os.path.exists(PMT_combined_file_name) and os.path.exists(PMT_combined_file_name)):
                 self.combine_run_files(run_folder, date_folder)
-            
+
             # Find header length
             # Load info from header
             header_length, header_dict = read_header_string(PMT_combined_file_name)
-
             PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length)
             PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length)
-            
-            #Extract wavelengths as first column in matrix
+            #Extract wavelengths as first row in matrix
             wavelengths = PMTdata[0]
+            
+            # Check number of wavelengths is equal to number of _channelA.dat files in folder
+            if len(wavelengths) != n_files:
+                self.combine_run_files(run_folder, date_folder)
+
+                # Reload
+                header_length, header_dict = read_header_string(PMT_combined_file_name)
+                PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length)
+                PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length)
+                wavelengths = PMTdata[0]
+
             PMTdata = (PMTdata[1:]).transpose()
             PDdata = (PDdata[1:]).transpose()
             
@@ -168,7 +182,7 @@ class DataHandler:
                         header_no_wl += line
         
             PMTtraces.append(np.loadtxt(PMTfile, skiprows=total_header_length).flatten())
-            PDtraces.append( np.loadtxt(PDfile, skiprows=total_header_length).flatten())
+            PDtraces.append(np.loadtxt(PDfile, skiprows=total_header_length).flatten())
             
         PMTtraces = np.array(PMTtraces)
         PDtraces = np.array(PDtraces)

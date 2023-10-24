@@ -37,8 +37,6 @@ class PMTDirTree(DataDirTree):
                     run_item.setData(0, Qt.ItemDataRole.UserRole, dir_path)  # set the folder path as user data for the item
                     run_item.setData(self.header_indices['Scale'], Qt.ItemDataRole.EditRole, 1)
 
-                root_item.sortChildren(0, Qt.SortOrder.AscendingOrder)
-
     def on_item_expanded(self, item : QTreeWidgetItem):
         #Check if date_dir - by checking if its parent doesn't have a parent
         if not (item.parent() is None) and item.parent().parent() is None:

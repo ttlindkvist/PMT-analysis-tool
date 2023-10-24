@@ -10,6 +10,7 @@ class DataDirTree:
     header_indices = {'Run selection' : 0, 'Scale': 1, 'Molecule': 2, 'Quick load': 3, 'Comments': 4}
     def __init__(self, data_dir_path):
         self.tree = QTreeWidget()
+        self.tree.setMouseTracking(True)
         self.tree.setColumnCount(len(self.header_indices.keys()))
         self.tree.setHeaderLabels(self.header_indices.keys())
         self.tree.clicked.connect(self.clicked)

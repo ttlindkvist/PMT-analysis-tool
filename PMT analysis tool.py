@@ -71,9 +71,12 @@ class MainWindow(QtWidgets.QMainWindow):
         sum_selected_button = QPushButton("Sum selected")
         sum_selected_button.clicked.connect(self.sum_button_clicked)
         self.force_sum_cb = QCheckBox('Force sum')
+        self.auto_display_data_cb = QCheckBox('Auto display')
+        self.auto_display_data_cb.clicked.connect(self.auto_display_clicked)
         sum_buttons1.addWidget(autoscale_button)
         sum_buttons1.addWidget(sum_selected_button)
         sum_buttons1.addWidget(self.force_sum_cb)
+        sum_buttons1.addWidget(self.auto_display_data_cb)
         right_layout.addLayout(sum_buttons1)
         
         sum_buttons2 = QHBoxLayout()
@@ -81,8 +84,11 @@ class MainWindow(QtWidgets.QMainWindow):
         reset_sum_button.clicked.connect(self.reset_sum_button_clicked)
         clear_selection_button = QPushButton("Clear selection")
         clear_selection_button.clicked.connect(self.clear_selection_button_clicked)
+        refresh_trees_button = QPushButton("Refresh")
+        refresh_trees_button.clicked.connect(self.refresh_trees_button_clicked)
         sum_buttons2.addWidget(reset_sum_button)
         sum_buttons2.addWidget(clear_selection_button)
+        sum_buttons2.addWidget(refresh_trees_button)
         right_layout.addLayout(sum_buttons2)
 
         self.sum_tree = QTreeWidget()
@@ -215,6 +221,8 @@ class MainWindow(QtWidgets.QMainWindow):
             sum_name = it.value().text(self.sum_tree_headers['Sum selection'])
             scale = it.value().data(self.sum_tree_headers['Scale'], Qt.ItemDataRole.EditRole)
             sum_data_key = it.value().data(self.sum_tree_headers['Runs'], Qt.ItemDataRole.UserRole)
+            it += 1
+            
             wls = np.nan
             signal = np.nan
             signal_std = np.nan
@@ -252,8 +260,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 zero_rec_cm_nm = float(self.reciprocal_cm_zero.text())
                 self.sc.axes.plot((1/wls - 1/zero_rec_cm_nm)*1e7, signal, label=sum_name+' '+molecule_str)
             
-            it += 1
-
         #Update x-axis limits and plot zero-line
         # In wavelength- or energy-space 
         if not self.reciprocal_cm.isChecked():
@@ -415,8 +421,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.display_button_clicked()
     
     def on_resize(self, event):
-        # self.display_button_clicked()
-   
         self.update_ticks()
 
         self.sc.figure.tight_layout()
@@ -443,8 +447,19 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
         else:
             item.setFlags(flags & (~Qt.ItemFlag.ItemIsEditable))
-
     
+    def refresh_trees_button_clicked(self):
+        self.datadirtree.reload_folders()
+        self.spec_data_dir_tree.reload_folders()
+
+    def auto_display_clicked(self):
+        if self.auto_display_data_cb.isChecked():
+            self.datadirtree.tree.itemChanged.connect(self.display_button_clicked)
+            self.spec_data_dir_tree.tree.itemChanged.connect(self.display_button_clicked)
+        else:
+            self.datadirtree.tree.itemChanged.disconnect()
+            self.spec_data_dir_tree.tree.itemChanged.disconnect()
+
 app = QtWidgets.QApplication(sys.argv)
 w = MainWindow()
 app.exec()
