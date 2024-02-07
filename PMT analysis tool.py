@@ -2,7 +2,7 @@ import sys, os, glob
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-matplotlib.use('QtAgg')
+matplotlib.use('qtagg')
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWidgets import QFileDialog, QTabWidget, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QVBoxLayout,\
@@ -78,6 +78,15 @@ class MainWindow(QtWidgets.QMainWindow):
         sum_buttons1.addWidget(self.force_sum_cb)
         sum_buttons1.addWidget(self.auto_display_data_cb)
         right_layout.addLayout(sum_buttons1)
+
+        binning_layout = QHBoxLayout()
+        self.sum_bin_width = QLineEdit('0.1')
+        self.sum_bin_width.setValidator(QDoubleValidator())
+        self.sum_bin_cb = QCheckBox('(nm) Use sum binning')
+        self.sum_bin_cb.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        binning_layout.addWidget(self.sum_bin_width)
+        binning_layout.addWidget(self.sum_bin_cb)
+        right_layout.addLayout(binning_layout)
         
         sum_buttons2 = QHBoxLayout()
         reset_sum_button = QPushButton("Reset sums")
@@ -184,7 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not self.reciprocal_cm.isChecked():
                     self.sc.axes.plot(wls, abs, label=os.path.basename(selected_run))
                 else:
-                    zero_rec_cm_nm = float(self.reciprocal_cm_zero.text())
+                    zero_rec_cm_nm = float(self.reciprocal_cm_zero.text().replace(',','.'))
                     self.sc.axes.plot((1/wls - 1/zero_rec_cm_nm)*1e7, abs, label=os.path.basename(selected_run))
         
         ##### Dispersed fluorescence #####
@@ -211,7 +220,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not self.reciprocal_cm.isChecked():
                     self.sc.axes.plot(wls, disp_fluor, label=os.path.basename(selected_run))
                 else:
-                    zero_rec_cm_nm = float(self.reciprocal_cm_zero.text())
+                    zero_rec_cm_nm = float(self.reciprocal_cm_zero.text().replace(',','.'))
                     self.sc.axes.plot((1/wls - 1/zero_rec_cm_nm)*1e7, disp_fluor, label=os.path.basename(selected_run))
         
         #Plot sum spectra - both PMT and iCCD
@@ -257,7 +266,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if not self.reciprocal_cm.isChecked():
                 self.sc.axes.plot(wls, signal, label=sum_name+' '+molecule_str)
             else:
-                zero_rec_cm_nm = float(self.reciprocal_cm_zero.text())
+                zero_rec_cm_nm = float(self.reciprocal_cm_zero.text().replace(',','.'))
                 self.sc.axes.plot((1/wls - 1/zero_rec_cm_nm)*1e7, signal, label=sum_name+' '+molecule_str)
             
         #Update x-axis limits and plot zero-line
@@ -267,7 +276,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.sc.axes.set_xlim(*wl_range)
             self.sc.axes.set_xlabel('Wavelength (nm)')
         else:
-            zero_rec_cm_nm = float(self.reciprocal_cm_zero.text())
+            zero_rec_cm_nm = float(self.reciprocal_cm_zero.text().replace(',','.'))
             rec_x_range = (1/wl_range[1]-1/zero_rec_cm_nm)*1e7, (1/wl_range[0]-1/zero_rec_cm_nm)*1e7
             self.sc.axes.hlines(0, -100000, 100000, ls='--', colors='k')
             self.sc.axes.set_xlim(*rec_x_range)
@@ -320,9 +329,9 @@ class MainWindow(QtWidgets.QMainWindow):
             sum_data_key = ''
             for selected_run in selected_runs:
                 runs_string += os.path.basename(selected_run)+' '
-                sum_data_key += selected_run
+                sum_data_key += selected_run+' '
             # Make unique identifier - if the same runs are used with different scalings
-            sum_data_key = TAB_ENUM[tab_index]+' Sum {}'.format(n_sums+1) + sum_data_key
+            sum_data_key = TAB_ENUM[tab_index]+' Sum {}:'.format(n_sums+1) + sum_data_key
             
             molecule_str = ''
             #Calculate sum spectrum
@@ -332,7 +341,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 molecule_str = self.datahandler.absorption_spectra[sum_data_key]['molecule']
             elif TAB_ENUM[tab_index] == 'iCCD':
                 sum_data_key = 'iCCD '+ sum_data_key
-                self.spec_datahandler.sum_runs(selected_runs, sum_data_key, run_scalings=scalings*autoscalings, run_weights=1/autoscalings)
+                self.spec_datahandler.sum_runs(selected_runs, sum_data_key, run_scalings=scalings*autoscalings, run_weights=1/autoscalings,
+                                               bin_width=float(self.sum_bin_width.text().replace(',', '.')) if self.sum_bin_cb.isChecked() else None)
                 molecule_str = self.spec_datahandler.dispersed_fluorescence[sum_data_key]['molecule']
             
             #Add sum spectrum to tree
@@ -366,9 +376,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                               run_scalings=scalings_subset*autoscalings_subset, 
                                               run_weights=1/autoscalings_subset)
                 elif TAB_ENUM[tab_index] == 'iCCD':
+                    bin_width = float(self.sum_bin_width.text()) if self.sum_bin_cb.isChecked() else None
                     self.spec_datahandler.sum_runs(selected_runs_subset, sum_data_key, 
                                                    run_scalings=scalings_subset*autoscalings_subset,
-                                                   run_weights=1/autoscalings_subset)
+                                                   run_weights=1/autoscalings_subset, bin_width=bin_width)
                 
                 #Add sum spectrum to tree
                 sum_item = QTreeWidgetItem(self.sum_tree)
@@ -387,10 +398,39 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def export_button_clicked(self):
         #First loop over selected sums
-        
+        it = QTreeWidgetItemIterator(self.sum_tree, 
+                                     QTreeWidgetItemIterator.IteratorFlag.Checked | QTreeWidgetItemIterator.IteratorFlag.NoChildren)
+        while it.value():
+            sum_name = it.value().text(self.sum_tree_headers['Sum selection'])
+            scale = it.value().data(self.sum_tree_headers['Scale'], Qt.ItemDataRole.EditRole)
+            sum_data_key = it.value().data(self.sum_tree_headers['Runs'], Qt.ItemDataRole.UserRole)
+            it += 1
+            
+            wls = np.nan
+            signal = np.nan
+            signal_std = np.nan
+            molecule_str = ''
+            
+            if sum_data_key.split()[0] == 'PMT':
+                abs_spectrum = self.datahandler.absorption_spectra[sum_data_key]
+                wls = abs_spectrum['wavelengths']
+                signal = abs_spectrum['absorption']
+                signal_std = abs_spectrum['absorption_std']
+                molecule_str = abs_spectrum['molecule']
+            if sum_data_key.split()[0] == 'iCCD':
+                disp_spectrum = self.spec_datahandler.dispersed_fluorescence[sum_data_key] 
+                wls = disp_spectrum['wavelengths']
+                signal = disp_spectrum['fluorescence']
+                signal_std = disp_spectrum['fluorescence_std']
+                molecule_str = disp_spectrum['molecule']
 
-        test = QFileDialog.getSaveFileName(self, "Save sum", "C:/test.dat")
-        print(test)
+            # Ask for location and filename
+            filename, _ = QFileDialog.getSaveFileName(self, "Save sum", "C:\\Users\\au643642\\OneDrive - Aarhus universitet\\Documents\\PhD\\LUNA2\\"+molecule_str+".txt")
+            print(filename)
+            #Save spectrum
+            header = 'Molecule: '+molecule_str+'\nRuns: '+sum_data_key.split(':')[1]
+            np.savetxt(filename, np.vstack((wls, signal, signal_std)).T, header=header)
+
 
     def reset_sum_button_clicked(self):
         self.sum_tree.clear()

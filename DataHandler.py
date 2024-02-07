@@ -73,7 +73,8 @@ class DataHandler:
             PDdata = (PDdata[1:]).transpose()
             
             self.cached_runs[run_folder] = {'wavelengths': wavelengths, 'PMT': PMTdata, 'PD' : PDdata,
-                                            'molecule' : header_dict.get('Molecule', '')}
+                                            'molecule' : header_dict.get('Molecule', ''),
+                                            'injections' : int(header_dict.get('Traces per scan step'))}
             self.compute_absorption(run_folder)
     
     def sum_runs(self, run_folders, data_key, run_weights=None, run_scalings=None):
@@ -133,6 +134,7 @@ class DataHandler:
         PMTdata  = self.cached_runs[run_folder]['PMT']
         PDdata   = self.cached_runs[run_folder]['PD']
         molecule   = self.cached_runs[run_folder]['molecule']
+        n_injections = self.cached_runs[run_folder]['injections']
         if len(np.atleast_1d(wls)) > 1:
             PMT_zeros = np.mean(PMTdata[:,500:1000], axis=1)
             PD_zeros  = np.mean(PDdata[:,500:1000] , axis=1)
@@ -143,7 +145,7 @@ class DataHandler:
             PMT_yields = np.trapz(PMTdata[:,PMTintegrate_start:PMTintegrate_end] - PMT_zeros, axis=1)
             PD_yields =  np.trapz(PDdata[:,PDintegrate_start:PDintegrate_end] - PD_zeros, axis=1)
             
-            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls),
+            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls) * n_injections,
                                                    'molecule': molecule}
         else:
             PMT_zeros = np.mean(PMTdata[500:1000])
@@ -152,7 +154,7 @@ class DataHandler:
             PMT_yields = np.trapz(PMTdata[PMTintegrate_start:PMTintegrate_end] - PMT_zeros)
             PD_yields = np.trapz(PDdata[PDintegrate_start:PDintegrate_end] - PD_zeros)
             
-            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls),
+            self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls)* n_injections,
                                                    'molecule': molecule}
         
     def combine_run_files(self, folder, savefolder):

@@ -8,7 +8,7 @@ from PMTHeaderReader import read_header_string
 
 class PMTDirTree(DataDirTree):
     def __init__(self, data_dir_path):
-        self.header_indices = {'Run selection' : 0, 'Scale': 1, 'Molecule': 2, 'Quick load': 3, 'Comments': 4}
+        self.header_indices = {'Run selection' : 0, 'Scale': 1, 'Molecule': 2, 'Quick load': 3, 'Injections': 4, 'Comments': 5}
         super().__init__(data_dir_path)
     def reload_folders(self):
         self.tree.clear()
@@ -60,4 +60,5 @@ class PMTDirTree(DataDirTree):
                     child.setText(self.header_indices['Quick load'], 'No')
 
                 child.setText(self.header_indices['Molecule'], header_dict.get('Molecule', ''))
+                child.setText(self.header_indices['Injections'], header_dict.get('Traces per scan step', ''))
                 child.setText(self.header_indices['Comments'], header_dict.get('Comments', ''))

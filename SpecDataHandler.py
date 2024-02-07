@@ -13,8 +13,12 @@ def weighted_avg_and_std(values, weights):
     return average, np.sqrt(variance)
 
 class SpecDataHandler:
-    #Number of non-intensified pixels on each side
-    DEAD_PIXELS = 167
+    ACTIVE_PIXELS = 660
+    # total number of active (intensified) pixels is 690/1024. However, spectra have shown that the edge pixels are not intensified as much as the others.
+    # The active pixels are centered, so the inactive areas are located in each side.
+    # (this is approx 22.6 nm in each side in case of grating2)
+    DEAD_PIXELS = int(np.ceil((1024-ACTIVE_PIXELS)/2)) 
+
     def __init__(self):
         self.dispersed_fluorescence = {}
     
@@ -32,16 +36,19 @@ class SpecDataHandler:
             if data_length == 1024:
                 bin_size = 4
                 rebinned_wls = data[0].reshape(-1, bin_size).mean(axis=1)
+                rebinned_bkg = data[1].reshape(-1, bin_size).mean(axis=1)
                 rebinned_signal = data[3].reshape(-1, bin_size).sum(axis=1)
                 self.dispersed_fluorescence[run] = {'wavelengths'  : rebinned_wls[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)], 
+                                                    'background' : rebinned_bkg[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
                                                     'fluorescence' : rebinned_signal[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
                                                     'molecule' : header_dict.get('Ion name', '')}
             else:
                 self.dispersed_fluorescence[run] = {'wavelengths'  : data[0,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)], 
+                                                    'background' : data[1,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
                                                     'fluorescence' : data[3,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
                                                     'molecule' : header_dict.get('Ion name', '')}
             
-    def sum_runs(self, runs, data_key, run_weights=None, run_scalings=None):
+    def sum_runs(self, runs, data_key, run_weights=None, run_scalings=None, bin_width=None):
         #First see if all runs are loaded
         self.load_runs(runs)
         
@@ -64,24 +71,32 @@ class SpecDataHandler:
             molecules.append(self.dispersed_fluorescence[run_folder]['molecule'])
         
         weights = np.array(weights)
+        
+        if bin_width is None:
+            # Sort all arrays wrt. the wl
+            sorted_idxs = np.argsort(wls)
+            signal_sorted = signal[sorted_idxs]
+            weights_sorted = weights[sorted_idxs]
+            wl_sorted = wls[sorted_idxs]
 
-        # Sort all arrays wrt. the wl
-        sorted_idxs = np.argsort(wls)
-        signal_sorted = signal[sorted_idxs]
-        weights_sorted = weights[sorted_idxs]
-        wl_sorted = wls[sorted_idxs]
+            #For multiple measurements at a wl, find the mean and std
+            wl_set = np.unique(wl_sorted)
+            signal_avg = np.zeros(wl_set.shape)
+            signal_std = np.zeros(wl_set.shape)
+            for i, wl in enumerate(wl_set):
+                vals = signal_sorted[np.argwhere(wl_sorted==wl)]
+                ws = weights_sorted[np.argwhere(wl_sorted==wl)]
+                avg, std = weighted_avg_and_std(vals, ws)
 
-        #For multiple measurements at a wl, find the mean and std
-        wl_set = np.unique(wl_sorted)
-        signal_avg = np.zeros(wl_set.shape)
-        signal_std = np.zeros(wl_set.shape)
-        for i, wl in enumerate(wl_set):
-            vals = signal_sorted[np.argwhere(wl_sorted==wl)]
-            ws = weights_sorted[np.argwhere(wl_sorted==wl)]
-            avg, std = weighted_avg_and_std(vals, ws)
-
-            signal_avg[i] = avg
-            signal_std[i] = std / np.sqrt(len(vals))
+                signal_avg[i] = avg
+                signal_std[i] = std / np.sqrt(len(vals))
+        else:
+            #Sort wavelengths in bins
+            wl_bins = np.arange(np.min(wls), np.max(wls), bin_width)
+            sorted_idxs = np.digitize(wls, wl_bins)
+            signal_avg = np.array([weighted_avg_and_std(signal[sorted_idxs==(i+1)], weights[sorted_idxs==(i+1)])[0] for i in range(len(wl_bins))])
+            signal_std = np.array([weighted_avg_and_std(signal[sorted_idxs==(i+1)], weights[sorted_idxs==(i+1)])[1]/np.sqrt(np.sum(sorted_idxs==(i+1))) for i in range(len(wl_bins))])
+            wl_set = wl_bins + bin_width/2
 
         molecules_set = set(molecules)
         molecules_str = ', '.join(molecules_set)
@@ -158,7 +173,6 @@ class SpecDataHandler:
                         reference_end_idx = np.argmin(np.abs(reference_wls-common_wls_end))
 
                         reference_integral = np.trapz(reference_signal[reference_start_idx:reference_end_idx], reference_wls[reference_start_idx:reference_end_idx])
-
 
                         # additional scaling from reference
                         auto_scale_factor = run_scalings.get(sorted_runs[i],1) * reference_integral / run_integral

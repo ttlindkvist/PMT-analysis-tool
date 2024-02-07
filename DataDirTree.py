@@ -1,6 +1,6 @@
 import sys, os, glob
 from datetime import datetime
-from PyQt6.QtWidgets import QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QStyledItemDelegate, QLineEdit
+from PyQt6.QtWidgets import QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator, QStyledItemDelegate, QLineEdit, QAbstractItemView
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QValidator
 
@@ -11,6 +11,7 @@ class DataDirTree:
     def __init__(self, data_dir_path):
         self.tree = QTreeWidget()
         self.tree.setMouseTracking(True)
+        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.setColumnCount(len(self.header_indices.keys()))
         self.tree.setHeaderLabels(self.header_indices.keys())
         self.tree.clicked.connect(self.clicked)
