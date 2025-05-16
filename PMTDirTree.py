@@ -12,7 +12,7 @@ class PMTDirTree(DataDirTree):
         super().__init__(data_dir_path)
     def reload_folders(self):
         self.tree.clear()
-        for year_dir in sorted(glob.glob(self.data_dir_path+'\\*\\')):
+        for year_dir in sorted(glob.glob(self.data_dir_path+'\\*\\'))[::-1]:
             year_item = QTreeWidgetItem(self.tree)
             year_item.setText(0, os.path.basename(year_dir[:-1]))
             print(year_dir)
@@ -42,23 +42,29 @@ class PMTDirTree(DataDirTree):
         if not (item.parent() is None) and item.parent().parent() is None:
             date_dir = item.data(0, Qt.ItemDataRole.UserRole)
             n_children = item.childCount()
+            children_to_remove = []
             for i in range(n_children):
                 child = item.child(i)
                 run_dir = date_dir + child.data(0, Qt.ItemDataRole.UserRole)
-                # Check if combined run file exists, if it does load the run info
-                header_dict = {}
-                combined_run_filename = run_dir+'_channelA.dat'
-                if os.path.exists(combined_run_filename):
-                    header_length, dict = read_header_string(combined_run_filename)
-                    header_dict = dict
-                    child.setText(self.header_indices['Quick load'], 'Yes')
+                if len(glob.glob(run_dir + '\\*.dat')) < 3:
+                    children_to_remove.append(child)
                 else:
-                    run_files = glob.glob(run_dir+'\\*.dat')
-                    if len(run_files) > 0:
-                        header_length, dict = read_header_string(run_files[0])
+                    # Check if combined run file exists, if it does load the run info
+                    header_dict = {}
+                    combined_run_filename = run_dir+'_channelA.dat'
+                    if os.path.exists(combined_run_filename):
+                        header_length, dict = read_header_string(combined_run_filename)
                         header_dict = dict
-                    child.setText(self.header_indices['Quick load'], 'No')
+                        child.setText(self.header_indices['Quick load'], 'Yes')
+                    else:
+                        run_files = glob.glob(run_dir+'\\*.dat')
+                        if len(run_files) > 0:
+                            header_length, dict = read_header_string(run_files[0])
+                            header_dict = dict
+                        child.setText(self.header_indices['Quick load'], 'No')
 
-                child.setText(self.header_indices['Molecule'], header_dict.get('Molecule', ''))
-                child.setText(self.header_indices['Injections'], header_dict.get('Traces per scan step', ''))
-                child.setText(self.header_indices['Comments'], header_dict.get('Comments', ''))
+                    child.setText(self.header_indices['Molecule'], header_dict.get('Molecule', ''))
+                    child.setText(self.header_indices['Injections'], header_dict.get('Traces per scan step', ''))
+                    child.setText(self.header_indices['Comments'], header_dict.get('Comments', ''))
+            for child in children_to_remove:
+                item.removeChild(child)

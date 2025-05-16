@@ -17,12 +17,15 @@ class SpecDataHandler:
     # total number of active (intensified) pixels is 690/1024. However, spectra have shown that the edge pixels are not intensified as much as the others.
     # The active pixels are centered, so the inactive areas are located in each side.
     # (this is approx 22.6 nm in each side in case of grating2)
-    DEAD_PIXELS = int(np.ceil((1024-ACTIVE_PIXELS)/2)) 
+    DEAD_PIXELS = int(np.ceil((1024-ACTIVE_PIXELS)/2))
+
+    ##Force rebinning form 1024 to 256 pixels
+    force_rebinning = True
 
     def __init__(self):
         self.dispersed_fluorescence = {}
     
-    def load_runs(self, runs, force_rebinning=True):
+    def load_runs(self, runs):
         for run in runs:
             # Check if run is already loaded
             if run in self.dispersed_fluorescence.keys():
@@ -33,22 +36,29 @@ class SpecDataHandler:
             data = np.loadtxt(run, skiprows=header_length, max_rows=data_length).transpose()
             bin_size = int(1024/data_length)
 
-            if data_length == 1024:
+            if data_length == 1024 and self.force_rebinning:
                 bin_size = 4
                 rebinned_wls = data[0].reshape(-1, bin_size).mean(axis=1)
-                rebinned_bkg = data[1].reshape(-1, bin_size).mean(axis=1)
+                rebinned_ions_on = data[1].reshape(-1, bin_size).mean(axis=1)
+                rebinned_ions_off = data[2].reshape(-1, bin_size).mean(axis=1)
                 rebinned_signal = data[3].reshape(-1, bin_size).sum(axis=1)
-                self.dispersed_fluorescence[run] = {'wavelengths'  : rebinned_wls[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)], 
-                                                    'background' : rebinned_bkg[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
-                                                    'fluorescence' : rebinned_signal[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
+                self.dispersed_fluorescence[run] = {'wavelengths'            : np.copy(rebinned_wls[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]), 
+                                                    'ions_on'                : np.copy(rebinned_ions_on[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'ions_off'               : np.copy(rebinned_ions_off[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'fluorescence'           : np.copy(rebinned_signal[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'raw_fluorescence'       : np.copy(rebinned_signal[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'fluorescence_autoscale' : np.copy(rebinned_signal[int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
                                                     'molecule' : header_dict.get('Ion name', '')}
             else:
-                self.dispersed_fluorescence[run] = {'wavelengths'  : data[0,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)], 
-                                                    'background' : data[1,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
-                                                    'fluorescence' : data[3,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)],
+                self.dispersed_fluorescence[run] = {'wavelengths'            : np.copy(data[0,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'ions_on'                : np.copy(data[1,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'ions_off'               : np.copy(data[2,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'fluorescence'           : np.copy(data[3,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'raw_fluorescence'       : np.copy(data[3,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
+                                                    'fluorescence_autoscale' : np.copy(data[3,int(self.DEAD_PIXELS/bin_size):-int(self.DEAD_PIXELS/bin_size)]),
                                                     'molecule' : header_dict.get('Ion name', '')}
             
-    def sum_runs(self, runs, data_key, run_weights=None, run_scalings=None, bin_width=None):
+    def sum_runs(self, runs, data_key, run_weights=None, run_scalings=None, bin_width=None, round_wls=True):
         #First see if all runs are loaded
         self.load_runs(runs)
         
@@ -65,6 +75,7 @@ class SpecDataHandler:
         for run_folder, run_weight, run_scaling in zip(runs, run_weights, run_scalings):
             signal = np.concatenate((signal, np.atleast_1d(self.dispersed_fluorescence[run_folder]['fluorescence']*run_scaling)))
             run_wls = np.atleast_1d(self.dispersed_fluorescence[run_folder]['wavelengths'])
+            if round_wls: run_wls = np.round(run_wls, 1)
             wls = np.concatenate((wls, run_wls))
             
             weights += [run_weight]*len(run_wls)
@@ -86,6 +97,10 @@ class SpecDataHandler:
             for i, wl in enumerate(wl_set):
                 vals = signal_sorted[np.argwhere(wl_sorted==wl)]
                 ws = weights_sorted[np.argwhere(wl_sorted==wl)]
+                idxs = ~np.isnan(vals)
+                vals = vals[idxs]
+                ws = ws[idxs]
+
                 avg, std = weighted_avg_and_std(vals, ws)
 
                 signal_avg[i] = avg
@@ -94,8 +109,19 @@ class SpecDataHandler:
             #Sort wavelengths in bins
             wl_bins = np.arange(np.min(wls), np.max(wls), bin_width)
             sorted_idxs = np.digitize(wls, wl_bins)
-            signal_avg = np.array([weighted_avg_and_std(signal[sorted_idxs==(i+1)], weights[sorted_idxs==(i+1)])[0] for i in range(len(wl_bins))])
-            signal_std = np.array([weighted_avg_and_std(signal[sorted_idxs==(i+1)], weights[sorted_idxs==(i+1)])[1]/np.sqrt(np.sum(sorted_idxs==(i+1))) for i in range(len(wl_bins))])
+            signal_avg = np.zeros(len(wl_bins))
+            signal_std = np.zeros(len(wl_bins))
+            for i in range(len(wl_bins)):
+                vals = signal[sorted_idxs==(i+1)]
+                ws = weights[sorted_idxs==(i+1)]
+                idxs = ~np.isnan(vals)
+                vals = vals[idxs]
+                ws = ws[idxs]
+
+                avg, std = weighted_avg_and_std(vals, ws)
+                signal_avg[i] = avg
+                signal_std[i] = std / np.sqrt(len(vals))
+                
             wl_set = wl_bins + bin_width/2
 
         molecules_set = set(molecules)
@@ -139,31 +165,32 @@ class SpecDataHandler:
             # Sort runs in order from largest to smallest range
             # sorted_runs = sorted(s, key=lambda run: all_wl_ranges[run][1]-all_wl_ranges[run][0])[::-1]
 
-            sorted_runs = sorted(s, key=lambda run: np.trapz(self.dispersed_fluorescence[run]['fluorescence'], self.dispersed_fluorescence[run]['wavelengths']))[::-1]
+            sorted_runs = sorted(s, key=lambda run: np.trapz(self.dispersed_fluorescence[run]['fluorescence_autoscale'], 
+                                                             self.dispersed_fluorescence[run]['wavelengths']))[::-1]
 
             run_scalings = dict()
-
             runs_left = sorted_runs[1:]
-            
             i = 0
             maxiter = len(sorted_runs)-1
             while len(runs_left) > 0:
                 # Rescale all runs with respect to the i'th largest ranged run
                 rescaled_runs = []
                 reference_wls    = self.dispersed_fluorescence[sorted_runs[i]]['wavelengths']
-                reference_signal = self.dispersed_fluorescence[sorted_runs[i]]['fluorescence']
+                reference_signal = self.dispersed_fluorescence[sorted_runs[i]]['fluorescence_autoscale']
+                self.dispersed_fluorescence[sorted_runs[i]]['autoscaling factor'] = 1
                 for run in (x for x in runs_left if x != sorted_runs[i]):
-                    wls = self.dispersed_fluorescence[run]['wavelengths']
-                    run_wl_start = np.min(wls)
-                    run_wl_end = np.max(wls)
+                    wls = np.copy(self.dispersed_fluorescence[run]['wavelengths'])
+
 
                     # Find common wavelengths
+                    run_wl_start = np.min(wls)
+                    run_wl_end = np.max(wls)
                     common_wls_start = max(run_wl_start, np.min(reference_wls))
                     common_wls_end = min(run_wl_end, np.max(reference_wls))
 
                     # print(common_wls_start, common_wls_end)
                     if common_wls_start < common_wls_end:
-                        run_signal = self.dispersed_fluorescence[run]['fluorescence']
+                        run_signal = self.dispersed_fluorescence[run]['fluorescence_autoscale']
                         run_start_idx = np.argmin(np.abs(wls - common_wls_start))
                         run_end_idx = np.argmin(np.abs(wls - common_wls_end))
 
@@ -187,4 +214,5 @@ class SpecDataHandler:
 
                 i += 1
                 if i > maxiter:
+                    print('Autoscale max iter')
                     break

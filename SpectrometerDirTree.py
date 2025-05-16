@@ -1,17 +1,22 @@
 from DataDirTree import DataDirTree
 import glob, os
+import numpy as np
 from PyQt6.QtWidgets import QTreeWidgetItem, QTreeWidgetItemIterator
+from PyQt6.QtWidgets import QInputDialog
+
 from PyQt6.QtCore import Qt, QSize
 from datetime import datetime 
 import SpecHeaderReader
-
+import SpecDataHandler
 
 class SpectrometerDirTree(DataDirTree):
-    def __init__(self, data_dir_path):
+    def __init__(self, data_dir_path : str, spec_data_handler : SpecDataHandler):
         self.header_indices = {'Run selection' : 0, 'Scale': 1, 'Molecule': 2, 'Excitation wavelength': 3, 'Filter':4, 'Comments': 5}
         super().__init__(data_dir_path)
+        self.spec_data_handler = spec_data_handler
     def reload_folders(self):
         self.tree.clear()
+        self.tree.itemDoubleClicked.connect(self.on_double_clicked)
         for year_dir in sorted(glob.glob(self.data_dir_path+'\\*\\'))[::-1]:
             year_item = QTreeWidgetItem(self.tree)
             year_item.setText(0, os.path.basename(year_dir[:-1]))
@@ -43,6 +48,37 @@ class SpectrometerDirTree(DataDirTree):
                     run_item.setText(0, dir_path)  # set the display text to the name of the current folder
                     run_item.setData(0, Qt.ItemDataRole.UserRole, run_file)  # set the folder path as user data for the item
                     run_item.setData(self.header_indices['Scale'], Qt.ItemDataRole.EditRole, 1)
+                    
+    def on_double_clicked(self, item, column_no):
+        if column_no == 0 and item.childCount() == 0:
+            run = item.data(0, Qt.ItemDataRole.UserRole)
+            start, ok1 = QInputDialog.getDouble(self.tree, 'Set Removal Interval', 'Start')
+            if ok1: stop, ok2 =  QInputDialog.getDouble(self.tree, 'Set Removal Interval', 'End')
+            if ok1 and ok2:
+                wls = self.spec_data_handler.dispersed_fluorescence[run]['wavelengths']
+                idxs_removed = np.logical_and(wls > start, wls < stop)
+                self.spec_data_handler.dispersed_fluorescence[run]['fluorescence'] = np.copy(self.spec_data_handler.dispersed_fluorescence[run]['raw_fluorescence'])
+                self.spec_data_handler.dispersed_fluorescence[run]['fluorescence_autoscale'] = np.copy(self.spec_data_handler.dispersed_fluorescence[run]['raw_fluorescence'])
+                self.spec_data_handler.dispersed_fluorescence[run]['fluorescence'][idxs_removed] = np.nan
+                if np.argwhere(idxs_removed)[0][0] == 0 or np.argwhere(idxs_removed)[-1][0] == (len(wls)-1):
+                    #Removed from either edge - remove datapoints
+                    pass
+                else:
+                    if np.sum(idxs_removed) > 0:
+                        flu = self.spec_data_handler.dispersed_fluorescence[run]['fluorescence']
+
+                        left_idx = np.argwhere(idxs_removed)[0][0]-1
+                        right_idx = np.argwhere(idxs_removed)[-1][0]+1
+                        n_left = min(left_idx, 3)
+                        n_right = min(len(idxs_removed) - right_idx, 3)
+
+                        left_avg  = flu[left_idx-n_left:left_idx]
+                        right_avg = flu[right_idx:right_idx+n_right]
+
+                        left_avg = np.mean(left_avg)
+                        right_avg = np.mean(right_avg)
+                        self.spec_data_handler.dispersed_fluorescence[run]['fluorescence_autoscale'][idxs_removed] = (left_avg+right_avg)/2
+
 
 
     def on_item_expanded(self, item : QTreeWidgetItem):
