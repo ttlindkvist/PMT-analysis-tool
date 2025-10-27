@@ -8,6 +8,8 @@ from PMTHeaderReader import read_header_string
 from scipy.signal import savgol_filter
 from scipy.interpolate import CubicSpline
 from PyQt6.QtWidgets import QMessageBox
+from concurrent.futures import ThreadPoolExecutor
+
 
 respons = np.array([0.083, 0.092, 0.106, 0.121, 0.135, 0.149, 0.163, 0.177, 0.191, 0.205, 0.219, 0.232, 0.246, 0.26, 0.273, 0.286, 0.299, 0.312, 0.325, 0.337, 0.348, 0.360, 0.371, 0.382, 0.393, 0.403, 0.412, 0.42, 0.427, 0.433, 0.437])
 pd_wl = np.arange(400, 710, 10)
@@ -54,7 +56,6 @@ def calibrate_laser(wls, laser):
     return wls
 
 class DataHandler:
-    
     def __init__(self):
         self.cached_runs = {}
         self.absorption_spectra = {}
@@ -213,32 +214,28 @@ class DataHandler:
                                                'molecule': molecule,
                                                'PMT yields' : -PMT_yields, 
                                                'PD yields' : PD_yields,
-                                               'PD power' : PD_yields*PD_to_power_calib}
-
-
-        # if len(np.atleast_1d(wls)) > 1:
-        #     PMT_zeros = np.mean(PMTdata[:,500:1000], axis=1)
-        #     PD_zeros  = np.mean(PDdata[:,500:1000] , axis=1)
-            
-        #     PMT_zeros = PMT_zeros.reshape((len(PMT_zeros), 1))
-        #     PD_zeros = PD_zeros.reshape((len(PD_zeros), 1))
-            
-        #     PMT_yields = np.trapz(PMTdata[:,PMTintegrate_start:PMTintegrate_end] - PMT_zeros, axis=1)
-        #     PD_yields =  np.trapz(PDdata[:,PDintegrate_start:PDintegrate_end] - PD_zeros, axis=1)
-            
-        #     self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields * PD_to_power) * n_injections,
-        #                                            'molecule': molecule}
-        # else:
-        #     PMT_zeros = np.mean(PMTdata[500:1000])
-        #     PD_zeros  = np.mean(PDdata[500:1000])
-            
-        #     PMT_yields = np.trapz(PMTdata[PMTintegrate_start:PMTintegrate_end] - PMT_zeros)
-        #     PD_yields = np.trapz(PDdata[PDintegrate_start:PDintegrate_end] - PD_zeros)
-            
-        #     # self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields) * self.PD_responsivity(wls)* n_injections * 10**(-PD_OD),
-        #     self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields * PD_to_power) * n_injections,
-        #                                            'molecule': molecule}
+                                               'PD power' : PD_yields*PD_to_power_calib
+                                               }
+    
+    def process_single_file(self, PMTfile, PDfile):
+        with open(PMTfile) as f:
+            header_no_wl = ''
+            line = ''
+            total_header_length = 0
+            while not ("End of Header" in line):
+                line = next(f)
+                total_header_length += 1
+                if "Excitation wavelength" in line:
+                    wavelength = float(line.split()[2])
+                else:
+                    header_no_wl += line
         
+        PMTtrace = np.loadtxt(PMTfile, skiprows=total_header_length).flatten()
+        PDtrace = np.loadtxt(PDfile, skiprows=total_header_length).flatten()
+        
+        return wavelength, PMTtrace, PDtrace, header_no_wl
+
+
     def combine_run_files(self, folder, savefolder):
         nfilesA = len(glob.glob(folder+'\\channelA[0-9][0-9][0-9]_sum.dat'))
         nfilesD = len(glob.glob(folder+'\\channelD[0-9][0-9][0-9]_sum.dat'))
@@ -250,25 +247,16 @@ class DataHandler:
         PDtraces = []
         wavelengths = []
         header_no_wl = ''
-        total_header_length = 0
-
-        for PMTfile, PDfile in zip(PMTfiles, PDfiles):
-
-            # Save the header and excitation wavelengths
-            with open(PMTfile) as f:
-                header_no_wl = ''
-                line = ''
-                total_header_length = 0
-                while not ("End of Header" in line):
-                    line = next(f)
-                    total_header_length += 1
-                    if "Excitation wavelength" in line:
-                        wavelengths.append(float(line.split()[2]))
-                    else:
-                        header_no_wl += line
         
-            PMTtraces.append(np.loadtxt(PMTfile, skiprows=total_header_length).flatten())
-            PDtraces.append(np.loadtxt(PDfile, skiprows=total_header_length).flatten())
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(self.process_single_file, PMTfiles, PDfiles))
+
+        for wavelength, PMTtrace, PDtrace, header in results:
+            wavelengths.append(wavelength)
+            PMTtraces.append(PMTtrace)
+            PDtraces.append(PDtrace)
+            if header_no_wl == '':
+                header_no_wl = header
             
         PMTtraces = np.array(PMTtraces)
         PDtraces = np.array(PDtraces)

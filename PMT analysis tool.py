@@ -231,7 +231,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if np.nanmin(abs) < signal_range[0]: signal_range[0] = np.nanmin(abs)
                 if np.nanmax(abs) > signal_range[1]: signal_range[1] = np.nanmax(abs)
                 
-                xs = wls[:]
+                xs = np.copy(wls)
                 if self.reciprocal_cm.isChecked():
                     zero_rec_cm_nm = float(self.reciprocal_cm_zero.text().replace(',','.'))
                     xs = (1/wls - 1/zero_rec_cm_nm)*1e7
@@ -310,11 +310,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if np.nanmax(signal) > signal_range[1]: signal_range[1] = np.nanmax(signal)
             
 
-            xs = wls
+            xs = np.copy(wls)
             if self.reciprocal_cm.isChecked():
                 zero_rec_cm_nm = float(self.reciprocal_cm_zero.text().replace(',','.'))
                 xs = (1/wls - 1/zero_rec_cm_nm)*1e7
-                # self.sc.axes.plot((1/wls - 1/zero_rec_cm_nm)*1e7, signal, label=sum_name+' '+molecule_str)
             
             p = self.sc.axes.plot(xs, signal, label=sum_name+' '+molecule_str)
             if self.uncertainty_cb.isChecked():
