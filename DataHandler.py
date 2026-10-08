@@ -209,8 +209,12 @@ class DataHandler:
             idxs = np.clip(np.searchsorted(k_wls, wls, side='left'), 0, len(k_wls)-1)
             PD_to_power_calib = 10**(PD_OD) * 10**kOD * filtered_kfactor[idxs]
         
-        self.absorption_spectra[run_folder] = {'wavelengths' : wls, 'absorption' : -PMT_yields / (wls * PD_yields * PD_to_power_calib) * n_injections,
-                                               'absorption (not power calibrated)' : -PMT_yields / (wls * PD_yields * PD_to_power) * n_injections,
+        self.absorption_spectra[run_folder] = {'wavelengths' : wls, 
+                                               # Absorption is scaled by n_injections, in the case of summing spectra, this then serves as a weight factor.
+                                               # The absorption should, however, be independent of the number of injections, 
+                                               # as the ratio of PMT to PD yields is independent of the number of injections.
+                                               'absorption' : -PMT_yields / (wls * PD_yields * PD_to_power_calib) * n_injections, 
+                                               'absorption (not power calibrated)' : -PMT_yields / (wls * PD_yields * PD_to_power) * n_injections, 
                                                'molecule': molecule,
                                                'PMT yields' : -PMT_yields, 
                                                'PD yields' : PD_yields,
