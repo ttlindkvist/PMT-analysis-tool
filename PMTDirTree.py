@@ -46,7 +46,9 @@ class PMTDirTree(DataDirTree):
             for i in range(n_children):
                 child = item.child(i)
                 run_dir = date_dir + child.data(0, Qt.ItemDataRole.UserRole)
-                if len(glob.glob(run_dir + '\\*.dat')) < 3:
+                if not glob.glob(run_dir + '\\channelA[0-9][0-9][0-9]*_sum.dat') or not glob.glob(
+                    run_dir + '\\channelD[0-9][0-9][0-9]*_sum.dat'
+                ):
                     children_to_remove.append(child)
                 else:
                     # Check if combined run file exists, if it does load the run info

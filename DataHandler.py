@@ -72,7 +72,7 @@ class DataHandler:
             date_folder = os.path.dirname(run_folder)
             PMT_combined_file_name = date_folder+'\\'+run_folder_base+'_channelA.dat'
             PD_combined_file_name =  date_folder+'\\'+run_folder_base+'_channelD.dat'
-            n_files = len(glob.glob(run_folder+'\\channelA*'))
+            n_files = len(glob.glob(run_folder+'\\channelA[0-9][0-9][0-9]*_sum.dat'))
             
             # Check if run is already loaded
             reload = False
@@ -91,8 +91,8 @@ class DataHandler:
             # Find header length
             # Load info from header
             header_length, header_dict = read_header_string(PMT_combined_file_name)
-            PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length)
-            PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length)
+            PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length, ndmin=2)
+            PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length, ndmin=2)
             #Extract wavelengths as first row in matrix
             wavelengths = PMTdata[0]
             
@@ -102,8 +102,8 @@ class DataHandler:
 
                 # Reload
                 header_length, header_dict = read_header_string(PMT_combined_file_name)
-                PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length)
-                PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length)
+                PMTdata = np.loadtxt(PMT_combined_file_name, skiprows=header_length, ndmin=2)
+                PDdata = np.loadtxt(PD_combined_file_name, skiprows=header_length, ndmin=2)
                 wavelengths = PMTdata[0]
 
             PMTdata = (PMTdata[1:]).transpose()
@@ -191,8 +191,8 @@ class DataHandler:
         PMT_zeros = np.mean(PMTdata[500:1000], axis=0)
         PD_zeros  = np.mean(PDdata[500:1000], axis=0)
         
-        PMT_yields = np.trapz(PMTdata[PMTintegrate_start:PMTintegrate_end] - PMT_zeros, axis=0)
-        PD_yields = np.trapz(PDdata[PDintegrate_start:PDintegrate_end] - PD_zeros, axis=0)
+        PMT_yields = np.trapezoid(PMTdata[PMTintegrate_start:PMTintegrate_end] - PMT_zeros, axis=0)
+        PD_yields = np.trapezoid(PDdata[PDintegrate_start:PDintegrate_end] - PD_zeros, axis=0)
         
         if use_k_factor:
             k_wls, k_factors, kOD = load_k_factor_calib_file(k_factor_filename)
@@ -237,8 +237,8 @@ class DataHandler:
 
 
     def combine_run_files(self, folder, savefolder):
-        nfilesA = len(glob.glob(folder+'\\channelA[0-9][0-9][0-9]_sum.dat'))
-        nfilesD = len(glob.glob(folder+'\\channelD[0-9][0-9][0-9]_sum.dat'))
+        nfilesA = len(glob.glob(folder+'\\channelA[0-9][0-9][0-9]*_sum.dat'))
+        nfilesD = len(glob.glob(folder+'\\channelD[0-9][0-9][0-9]*_sum.dat'))
         nfiles = min(nfilesA, nfilesD)
         PMTfiles = [folder+'\\channelA'+str(x).zfill(3)+'_sum.dat' for x in range(nfiles)]
         PDfiles = [folder+'\\channelD'+str(x).zfill(3)+'_sum.dat' for x in range(nfiles)]
@@ -313,7 +313,7 @@ class DataHandler:
             # sorted_runs = sorted(s, key=lambda run: all_wl_ranges[run][1]-all_wl_ranges[run][0])[::-1]
 
             # Sort runs in order from largest to smallest integral
-            sorted_runs = sorted(s, key=lambda run: np.trapz(self.absorption_spectra[run]['absorption'], self.absorption_spectra[run]['wavelengths']))[::-1]
+            sorted_runs = sorted(s, key=lambda run: np.trapezoid(self.absorption_spectra[run]['absorption'], self.absorption_spectra[run]['wavelengths']))[::-1]
 
             run_scalings = dict()
 
@@ -342,12 +342,12 @@ class DataHandler:
                         run_start_idx = np.argmin(np.abs(wls - common_wls_start))
                         run_end_idx = np.argmin(np.abs(wls - common_wls_end))
 
-                        run_integral = np.trapz(run_abs[run_start_idx:run_end_idx], wls[run_start_idx:run_end_idx])
+                        run_integral = np.trapezoid(run_abs[run_start_idx:run_end_idx], wls[run_start_idx:run_end_idx])
 
                         reference_start_idx = np.argmin(np.abs(reference_wls-common_wls_start))
                         reference_end_idx = np.argmin(np.abs(reference_wls-common_wls_end))
 
-                        reference_integral = np.trapz(reference_abs[reference_start_idx:reference_end_idx], reference_wls[reference_start_idx:reference_end_idx])
+                        reference_integral = np.trapezoid(reference_abs[reference_start_idx:reference_end_idx], reference_wls[reference_start_idx:reference_end_idx])
 
 
                         # additional scaling from reference
